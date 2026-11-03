@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrashFree — See what's filling your Mac</title>
+  <meta name="description" content="TrashFree maps your Mac's disk as rings you can read at a glance. Find the folders that grew, drag them to the collector, and move them to the Trash in one click.">
+  <meta name="theme-color" content="#FCF9F5">
+  <link rel="icon" href="brand/favicon.png" type="image/png" sizes="64x64">
+  <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+  <meta property="og:title" content="TrashFree — See what's filling your Mac">
+  <meta property="og:description" content="A disk map for macOS. Find what's big, drag it away, get your space back.">
+  <meta property="og:image" content="shots/map.webp">
+  <link rel="preload" href="fonts/source-serif.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/inter-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav-wrap">
+    <nav class="nav" aria-label="Main">
+      <a class="nav__logo" href="#top" aria-label="TrashFree home">
+        <img src="brand/trashfree-mark.png" alt="" width="28" height="28">
+        <span class="nav__name">Trash<em>Free</em></span>
+      </a>
+      <ul class="nav__links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+      <a class="button button--ink button--small" href="https://github.com/antedotee/trashfree/releases/latest/download/TrashFree.zip">Download</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero__card">
+        <span class="hero__outline" aria-hidden="true">TrashFree</span>
+        <img class="hero__cloud hero__cloud--a" src="art/cloud-a.svg" alt="" width="480" height="250">
+        <img class="hero__cloud hero__cloud--b" src="art/cloud-b.svg" alt="" width="420" height="220">
+        <img class="hero__mark" src="brand/trashfree-mark.png" alt="" width="96" height="96">
+        <div class="hero__text">
+          <h1 id="hero-title" class="display display--hero">See what's filling your Mac.<br><em>Free</em> it in a drag.</h1>
+          <a class="button button--glass" href="https://github.com/antedotee/trashfree/releases/latest/download/TrashFree.zip">Download for Mac</a>
+        </div>
+        <img class="hero__ground" src="art/ground.svg" alt="">
+        <figure class="hero__window">
+          <img src="shots/map.webp" width="1600" height="1200" alt="TrashFree showing the map of a Macintosh HD: rings of folders around a 235.7 GB center, with Users, System and Applications listed on the right" fetchpriority="high">
+        </figure>
+      </div>
+    </section>
+
+    <section class="verbs" id="features" aria-labelledby="verbs-title">
+      <h2 id="verbs-title" class="display display--md">One map for your whole disk,<br>and <em>everything</em> on it.</h2>
+      <p class="lede verbs__lede">TrashFree maps your disk as rings you can read at a glance. Find the folders that grew, drag them to the collector, and move them to the Trash in one click.</p>
+      <p class="fine">Free · macOS 13 or later · Apple silicon and Intel</p>
+      <ul class="verbs__list">
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M12 7v5l3 2"/></svg><span>Scan</span><small>Every byte, fast</small></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><path d="M12 2v3M22 12h-3"/></svg><span>See</span><small>Rings, not lists</small></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M8 10.5h5M10.5 8v5"/></svg><span>Zoom</span><small>Click to go deeper</small></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h12M13 8l4 4-4 4"/><circle cx="20" cy="12" r="1.6"/></svg><span>Collect</span><small>Drag what can go</small></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span>Free</span><small>One click to Trash</small></li>
+      </ul>
+    </section>
+
+    <div class="chapters" id="how">
+      <section class="chapter chapter--fjord chapter--wide" aria-labelledby="scan-title">
+        <div class="chapter__text">
+          <p class="eyebrow">Scan</p>
+          <h2 id="scan-title" class="display display--sm">Every disk Finder shows, <em>measured</em> in seconds</h2>
+          <p>Pick your startup disk, an external drive, or any folder. TrashFree reads the whole tree in parallel and counts what each file really takes on disk, so clones and hard links are counted once.</p>
+          <ul class="ticks">
+            <li>Startup disk, external drives, and disk images</li>
+            <li>A live progress bar, never a spinning guess</li>
+            <li>Free and purgeable space shown up front</li>
+          </ul>
+        </div>
+        <figure class="window window--list">
+          <img src="shots/scanning.webp" width="1600" height="512" alt="The disk list with Macintosh HD being scanned, showing a striped progress bar and a Cancel button, next to Photo Archive and Projects SSD" loading="lazy">
+        </figure>
+      </section>
+
+      <section class="chapter chapter--sea chapter--flip" aria-labelledby="see-title">
+        <div class="chapter__text">
+          <p class="eyebrow">See</p>
+          <h2 id="see-title" class="display display--sm">Point at a ring and it <em>tells you</em> what's inside</h2>
+          <p>Each ring is one level deeper. Arc size is file size, and color follows where a folder sits, so it keeps its color as you move around. Hover any arc and the list on the right shows what it holds.</p>
+          <ul class="ticks">
+            <li>The biggest folders are the biggest arcs</li>
+            <li>Hidden and purgeable space, labeled</li>
+            <li>The chart never jumps while you hover</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <img src="shots/hover.webp" width="1600" height="1200" alt="Hovering the System folder in the map; the right panel lists its contents: Volumes 18.4 GB, Library 15.5 GB, Applications, iOSSupport" loading="lazy">
+        </figure>
+      </section>
+
+      <section class="chapter chapter--birch" aria-labelledby="zoom-title">
+        <div class="chapter__text">
+          <p class="eyebrow">Zoom</p>
+          <h2 id="zoom-title" class="display display--sm">Click to dive in. <em>Click the center</em> to come back</h2>
+          <p>Zooming animates between levels, so you always see where you came from. The path along the top keeps every step one click away, even five folders down.</p>
+          <ul class="ticks">
+            <li>Smooth zoom in and out, about 0.4 seconds</li>
+            <li>Back and forward, like a browser</li>
+            <li>Long paths fold up and open on hover</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <img src="shots/zoomed.webp" width="1600" height="1200" alt="Zoomed five levels into Macintosh HD, System, Library, Desktop Pictures, showing wallpaper files from 26 MB down" loading="lazy">
+        </figure>
+      </section>
+
+      <section class="chapter chapter--clay chapter--flip" aria-labelledby="collect-title">
+        <div class="chapter__text">
+          <p class="eyebrow">Collect</p>
+          <h2 id="collect-title" class="display display--sm">Drag it to the collector. <em>Watch</em> the space open up</h2>
+          <p>Drag an arc or a row from the list to the collector in the corner. It leaves the map at once, so you see the room you are about to free before anything is deleted.</p>
+          <ul class="ticks">
+            <li>Collect from the map or from the list</li>
+            <li>Changed your mind? Clear puts it all back</li>
+            <li>Move to Trash in one click, still recoverable</li>
+          </ul>
+        </div>
+        <figure class="window">
+          <img src="shots/collect.webp" width="1600" height="1200" alt="One 716 MB item waiting in the collector with Move to Trash and Clear buttons; the map of System Library has closed the gap it left" loading="lazy">
+        </figure>
+      </section>
+    </div>
+
+    <section class="modes" aria-labelledby="modes-title">
+      <div class="modes__head">
+        <p class="eyebrow">Light and dark</p>
+        <h2 id="modes-title" class="display display--md">Quiet by design, <em>day or night</em></h2>
+        <p class="lede lede--narrow">A calm black-and-white window that follows your Mac's appearance. The only color is the map itself.</p>
+      </div>
+      <div class="modes__pair">
+        <figure class="window"><img src="shots/map.webp" width="1600" height="1200" alt="TrashFree in light mode" loading="lazy"></figure>
+        <figure class="window window--dark"><img src="shots/dark.webp" width="1600" height="1200" alt="TrashFree in dark mode, showing the System Library map" loading="lazy"></figure>
+      </div>
+    </section>
+
+    <section class="privacy" id="privacy" aria-labelledby="privacy-title">
+      <div class="privacy__text">
+        <p class="eyebrow">Privacy</p>
+        <h2 id="privacy-title" class="display display--sm">Your files <em>never leave</em> your Mac</h2>
+        <p>TrashFree has no account, no analytics, and makes no network requests. It asks once for Full Disk Access, so it can see everything and macOS stops asking folder by folder. Say no and it still scans what it can reach.</p>
+        <dl class="facts">
+          <div><dt>Network</dt><dd>None</dd></div>
+          <div><dt>Account</dt><dd>None</dd></div>
+          <div><dt>Deletes</dt><dd>Only what you collect, to the Trash</dd></div>
+        </dl>
+      </div>
+      <figure class="sheet" aria-label="The Full Disk Access request TrashFree shows before the first scan">
+        <div class="sheet__card">
+          <p class="sheet__title">Allow Full Disk Access</p>
+          <p class="sheet__body">To measure every folder, TrashFree needs Full Disk Access. Without it, Mail, Messages, other apps' data, and system folders count as hidden space.</p>
+          <ol class="sheet__steps">
+            <li>Open Full Disk Access in System Settings.</li>
+            <li>Turn on TrashFree.</li>
+            <li>Come back here. The scan starts on its own.</li>
+          </ol>
+          <div class="sheet__buttons"><span>Cancel</span><span class="sheet__spacer"></span><span>Scan Without Access</span><span class="sheet__primary">Open Settings</span></div>
+        </div>
+        <figcaption>The request is the app's own sheet, reproduced in HTML.</figcaption>
+      </figure>
+    </section>
+
+    <section class="faq" id="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title" class="display display--md">Questions</h2>
+      <div class="faq__list">
+        <details>
+          <summary>What is "hidden space"?</summary>
+          <p>Used space the scan could not read: other users' files, system areas, and local snapshots. With Full Disk Access it shrinks to what macOS keeps to itself.</p>
+        </details>
+        <details>
+          <summary>Can I undo a delete?</summary>
+          <p>Yes. Move to Trash puts items in the Trash, so you can put them back from Finder until you empty it.</p>
+        </details>
+        <details>
+          <summary>Why does it ask for Full Disk Access?</summary>
+          <p>Without it, macOS hides Mail, Messages, and app data from every app, and asks about Desktop, Documents, and Downloads one at a time. One grant answers all of that.</p>
+        </details>
+        <details>
+          <summary>macOS says it can't check TrashFree for malware. Is that safe?</summary>
+          <p>TrashFree is not notarized by Apple yet, so macOS stops the first launch. Open System Settings, go to Privacy &amp; Security, and click Open Anyway next to TrashFree. You only do this once. The <a href="https://github.com/antedotee/trashfree">source code</a> is public if you'd rather build it yourself.</p>
+        </details>
+        <details>
+          <summary>Which Macs does it run on?</summary>
+          <p>Any Mac with macOS 13 Ventura or later, on Apple silicon or Intel.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="cta" id="download" aria-labelledby="cta-title">
+      <div>
+        <h2 id="cta-title" class="display display--md"><em>Get your space back.</em></h2>
+        <p>Free for macOS. No account, no subscription.</p>
+      </div>
+      <div class="actions">
+        <a class="button button--ink" href="https://github.com/antedotee/trashfree/releases/latest/download/TrashFree.zip">Download for Mac</a>
+        <a class="button button--paper" href="#how">How it works</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="footer__brand">
+        <div class="footer__logo"><img src="brand/trashfree-mark.png" alt="" width="40" height="40"><span>Trash<em>Free</em></span></div>
+        <p>A disk map for the Mac.</p>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div><h3>Product</h3><a href="#features">Features</a><a href="#how">How it works</a><a href="https://github.com/antedotee/trashfree/releases/latest/download/TrashFree.zip">Download</a><a href="https://github.com/antedotee/trashfree">Source code</a></div>
+        <div><h3>Support</h3><a href="#faq">FAQ</a><a href="#privacy">Privacy</a></div>
+      </nav>
+    </div>
+    <p class="footer__legal">© 2026 TrashFree. Made for macOS.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,15 @@
+.build/
+build/
+.worktrees/
+.agents/shots/
+.DS_Store
+.signing/
+.agents/frames/
+
+# Local only: agent notes, editor skills, and the old plan.
+.agents/
+.kiro/
+.audit/
+analysis/
+PLAN.md
+.signing*/
