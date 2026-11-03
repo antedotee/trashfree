@@ -259,6 +259,38 @@ p { margin: 0; }
 .facts dt { font-size: 14.3px; color: var(--ink-3); }
 .facts dd { margin: 0; font-weight: 500; font-size: 16.5px; }
 
+/* Install: three approval steps, each with the screen macOS shows */
+.install { max-width: var(--column); margin: 158.4px auto 0; padding: 0 26.4px; }
+.install__head { display: grid; gap: 17.6px; justify-items: center; text-align: center; }
+.install__head .eyebrow { margin-bottom: 0; }
+.install__head .lede { text-align: center; }
+.install__steps { list-style: none; margin: 61.6px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 22px; }
+.install__step { display: grid; grid-template-rows: auto 1fr; gap: 26.4px; padding: 30.8px 30.8px 0; border-radius: var(--radius-xl); overflow: hidden; }
+.install__step--fjord { background: var(--fjord); }
+.install__step--clay { background: var(--clay); }
+.install__step--sea { background: var(--sea); }
+.install__text { display: grid; gap: 8.8px; align-content: start; }
+.install__text h3 { margin: 4.4px 0 0; font: 400 26.4px/1.15 var(--serif); letter-spacing: -0.02em; }
+.install__text p { margin: 0; color: var(--ink-2); font-size: 16.5px; }
+.install__text strong { color: var(--ink); font-weight: 600; }
+.install__text a, .install__after a { color: inherit; text-underline-offset: 3.3px; }
+.install__number {
+  display: grid; place-items: center; width: 30.8px; height: 30.8px; border-radius: 50%;
+  background: var(--ink); color: #fff; font-weight: 600; font-size: 15.4px;
+}
+.install__shot {
+  margin: 0; display: grid; place-items: center; align-self: end; min-height: 242px; padding: 22px;
+  background: rgb(255 255 255 / 62%); border-radius: 19.8px 19.8px 0 0;
+  box-shadow: 0 0 0 1px rgb(20 20 19 / 5%);
+}
+.install__shot img {
+  width: 100%; max-height: 220px; object-fit: contain; border-radius: 13.2px;
+  box-shadow: 0 0 0 1px rgb(20 20 19 / 8%), 0 13.2px 33px -13.2px rgb(20 20 19 / 28%);
+}
+.install__shot--icon { gap: 8.8px; }
+.install__shot--icon img { width: 132px; height: 132px; border-radius: 30px; }
+.install__shot figcaption { font-size: 14.3px; font-weight: 500; color: var(--ink-2); }
+.install__after { margin: 35.2px auto 0; max-width: 36em; text-align: center; color: var(--ink-2); }
 /* FAQ */
 .faq { max-width: 836px; margin: 158.4px auto 0; padding: 0 26.4px; }
 .faq__list { margin-top: 35.2px; }
@@ -330,6 +362,7 @@ p { margin: 0; }
   .chapter--flip .window { order: 1; margin: 0 -2.2px 0 0; }
   .chapter .window img, .chapter--flip .window img { border-radius: var(--radius-window) 0 0 0; }
   .privacy { grid-template-columns: 1fr; }
+  .install__steps { grid-template-columns: 1fr; max-width: 528px; margin-inline: auto; }
   .chapter--wide { padding: 52.8px 44px 0; }
   .chapter--wide .chapter__text { grid-template-columns: 1fr; padding-right: 0; }
   .chapter--wide .chapter__text > * { grid-column: 1 !important; grid-row: auto !important; }
@@ -362,7 +395,8 @@ p { margin: 0; }
   .chapter, .chapter--flip { padding: 39.6px 0 0 26.4px; border-radius: 26.4px; }
   .chapter--wide { padding: 39.6px 26.4px 0; }
   .chapter__text, .chapter--flip .chapter__text { padding-right: 26.4px; }
-  .modes, .privacy, .faq { margin-top: 123.2px; }
+  .modes, .privacy, .install, .faq { margin-top: 123.2px; }
+  .install__step { padding: 26.4px 22px 0; border-radius: 26.4px; }
   .modes__pair { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr 1fr; }
   .sheet__card { padding: 24.2px; }

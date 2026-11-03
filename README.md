@@ -20,8 +20,11 @@ Download [TrashFree.zip](https://github.com/antedotee/trashfree/releases/latest/
 from the [latest release](https://github.com/antedotee/trashfree/releases/latest), unzip it,
 and move TrashFree to Applications. Website: https://antedotee.github.io/trashfree/
 
-The app is not notarized by Apple yet, so macOS blocks the first launch. Open System
-Settings > Privacy & Security and click **Open Anyway** next to TrashFree. You do this once.
+The app is not notarized by Apple yet, so macOS blocks the first launch. Click **Done** in
+the "TrashFree Not Opened" dialog, then open System Settings > Privacy & Security and click
+**Open Anyway** next to TrashFree. You do this once. The
+[install steps](https://antedotee.github.io/trashfree/#install) show both screens, and the
+zip includes `How to Install TrashFree.txt`.
 
 ## Requirements
 

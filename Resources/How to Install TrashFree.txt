@@ -1,0 +1,22 @@
+How to install TrashFree
+========================
+
+TrashFree is not notarized by Apple yet, so macOS asks you to approve it the first
+time you open it. You only do this once.
+
+1. Drag TrashFree into your Applications folder.
+
+2. Open TrashFree. macOS shows a dialog titled "TrashFree" Not Opened.
+   Click Done. Don't click Move to Bin.
+
+3. Open System Settings, then Privacy & Security, and scroll down to Security.
+   Next to "TrashFree" was blocked to protect your Mac, click Open Anyway.
+   Confirm with your password or Touch ID, then click Open.
+
+That's it. From now on TrashFree opens like any other app.
+
+Before the first scan, TrashFree asks for Full Disk Access so it can measure every
+folder. You can say no; it then scans what it can reach.
+
+Pictures of each step: https://antedotee.github.io/trashfree/#install
+Source code and releases: https://github.com/antedotee/trashfree
