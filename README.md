@@ -54,8 +54,9 @@ swift build -c release --product tfscan
 ## Brand and website
 
 - `brand/source/trashfree-logo.png` is the logo artwork: a player throwing a folder into
-  a trash can, in torn paper. `brand/make_logo.py` cuts the full-bleed app icon and the
-  folder mark (favicon, nav, footer, hero) out of it, for `brand/` and `site/brand/`.
+  a trash can, in torn paper. `brand/make_logo.py` cuts the full-bleed app icon out of it,
+  plus the rounded website logo (favicon, nav, footer, link-preview card) and the folder
+  mark the hero tosses, for `brand/` and `site/brand/`.
   `scripts/make-icon.sh` packs the icon into `Resources/AppIcon.icns`.
 - `site/` is the landing page: plain HTML and CSS, self-hosted fonts (Instrument Serif,
   Inter), and real captures of the app in `site/shots/`. `site/SPEC.md` holds the design
