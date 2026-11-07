@@ -73,7 +73,7 @@ public final class ScanJob: @unchecked Sendable {
     private var bytesFound: Int64 = 0
     private var itemsFound = 0
     private var isCancelled = false
-    private let dataStreamShards = (0..<64).map { _ in OSAllocatedUnfairLock(initialState: Set<DataStreamKey>()) }
+    private let dataStreamShards = (0..<64).map { _ in OSAllocatedUnfairLock(initialState: [DataStreamKey: Bool]()) }
 
     public init(url: URL, options: Options = Options()) {
         self.rootURL = url
@@ -284,8 +284,17 @@ public final class ScanJob: @unchecked Sendable {
     /// runs only on collisions, and only for files whose clone ID differs from their file ID.
     private func countsDataStream(device: Int32, cloneID: UInt64, fileID: UInt64, linkCount: UInt32,
                                   at directory: Int32, name: String) -> Bool {
-        if claimDataStream(device: device, cloneID: cloneID) { return true }
-        return !sharesData(cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: directory, name: name)
+        switch claimDataStream(device: device, cloneID: cloneID, isOriginal: cloneID == fileID) {
+        case .claimed:
+            return true
+        case .takenByOriginal where linkCount > 1 || cloneID != fileID:
+            // A file whose clone ID names another file that was already counted: its clone.
+            // iCloud Drive keeps such a clone of every synced file in CloudDocs, so this is
+            // the common collision, and skipping the lookup here saves one slow call each.
+            return false
+        case .takenByOriginal, .takenByCopy:
+            return !sharesData(cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: directory, name: name)
+        }
     }
 
     /// Whether a file's blocks may also belong to another file, so it must be counted once.
@@ -313,10 +322,21 @@ public final class ScanJob: @unchecked Sendable {
     /// True the first time a data stream shared by hard links or APFS clones is seen, so
     /// its blocks count once. Without this, Preboot's cloned cryptexes triple its size.
     /// Most files pass through here, so the set is split into shards with their own locks.
-    private func claimDataStream(device: Int32, cloneID: UInt64) -> Bool {
+    private enum Claim { case claimed, takenByOriginal, takenByCopy }
+
+    /// Claims a data stream. An original is a file whose clone ID is its own file ID; once
+    /// an original holds a key, the key is marked so, even if a copy claimed it first.
+    private func claimDataStream(device: Int32, cloneID: UInt64, isOriginal: Bool) -> Claim {
         let key = DataStreamKey(device: device, cloneID: cloneID)
         let shard = dataStreamShards[Int(truncatingIfNeeded: (cloneID &* 0x9E37_79B9_7F4A_7C15) >> 58)]
-        return shard.withLock { $0.insert(key).inserted }
+        return shard.withLock { claims in
+            guard let heldByOriginal = claims[key] else {
+                claims[key] = isOriginal
+                return .claimed
+            }
+            if isOriginal && !heldByOriginal { claims[key] = true }
+            return heldByOriginal ? .takenByOriginal : .takenByCopy
+        }
     }
 }
 

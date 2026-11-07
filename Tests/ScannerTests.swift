@@ -134,6 +134,27 @@ struct ScannerTests {
         #expect(both.root.children.count == 2)
     }
 
+    @Test("many clones of one file, spread across folders and threads, count once")
+    func manyClones() throws {
+        let fixture = try Fixture()
+        let spread = fixture.root.appendingPathComponent("spread")
+        let original = fixture.root.appendingPathComponent("spread/0/original").path
+        for folder in 0..<40 {
+            try FileManager.default.createDirectory(at: spread.appendingPathComponent("\(folder)"), withIntermediateDirectories: true)
+        }
+        try Data(repeating: 9, count: 300_000).write(to: URL(fileURLWithPath: original))
+        for folder in 0..<40 {
+            for copy in 0..<5 {
+                #expect(clonefile(original, spread.appendingPathComponent("\(folder)/copy\(copy)").path, 0) == 0)
+            }
+        }
+        // Repeated so the copy-before-original order is likely to happen in some run.
+        for _ in 0..<10 {
+            let result = try #require(ScanJob(url: spread, options: .init(workerCount: 8)).run())
+            #expect(result.root.size == fixture.allocated("spread/0/original"))
+        }
+    }
+
     @Test("sizes are summed bottom-up and sorted largest first")
     func aggregation() throws {
         let fixture = try Fixture()
