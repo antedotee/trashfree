@@ -202,12 +202,27 @@ struct ScannerTests {
         #expect(job.run() == nil)
     }
 
-    @Test("cancelling a running scan returns nil")
+    @Test("cancelling a running scan returns nil and closes every folder it opened")
     func cancelDuringRun() async {
+        func openDescriptors() -> Int {
+            (0..<4096).reduce(0) { count, fd in fcntl(Int32(fd), F_GETFD) != -1 ? count + 1 : count }
+        }
+        let before = openDescriptors()
         let job = ScanJob(url: URL(fileURLWithPath: "/System/Library"))
         let scan = Task.detached { job.run() == nil }
         try? await Task.sleep(nanoseconds: 20_000_000)
         job.cancel()
         #expect(await scan.value)
+        #expect(openDescriptors() == before)
+    }
+
+    @Test("a finished scan closes every folder it opened")
+    func noDescriptorLeak() throws {
+        func openDescriptors() -> Int {
+            (0..<4096).reduce(0) { count, fd in fcntl(Int32(fd), F_GETFD) != -1 ? count + 1 : count }
+        }
+        let before = openDescriptors()
+        _ = try #require(ScanJob(url: URL(fileURLWithPath: "/System/Library/Fonts")).run())
+        #expect(openDescriptors() == before)
     }
 }
