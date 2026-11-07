@@ -207,7 +207,7 @@ public final class AppModel: ObservableObject {
     private func startScan(_ sourceID: String) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }), !sources[index].isScanning else { return }
         let source = sources[index]
-        let options: ScanJob.Options
+        var options: ScanJob.Options
         if let volume = source.volume {
             options = volume.kind == .startup
                 ? .startupDisk(expectedBytes: volume.usedBytes)
@@ -215,6 +215,7 @@ public final class AppModel: ObservableObject {
         } else {
             options = .init()
         }
+        options.workerCount = StorageMedium.of(volumeAt: source.url).scanWorkerCount
         let job = ScanJob(url: source.url, options: options)
         sources[index].state = .scanning(job, progress: 0)
         job.start { [weak self] result in
