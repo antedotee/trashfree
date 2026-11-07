@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 /// A finished scan: the tree plus the location it was rooted at.
 public struct ScanResult {
@@ -72,8 +73,7 @@ public final class ScanJob: @unchecked Sendable {
     private var bytesFound: Int64 = 0
     private var itemsFound = 0
     private var isCancelled = false
-    private let sharedDataLock = NSLock()
-    private var seenDataStreams = Set<DataStreamKey>()
+    private let dataStreamShards = (0..<64).map { _ in OSAllocatedUnfairLock(initialState: Set<DataStreamKey>()) }
 
     public init(url: URL, options: Options = Options()) {
         self.rootURL = url
@@ -217,7 +217,10 @@ public final class ScanJob: @unchecked Sendable {
         request.commonattr = Attr.common
         request.dirattr = Attr.dirMountStatus
         request.fileattr = Attr.fileLinkCount | Attr.fileAllocSize
-        request.forkattr = Attr.extCloneID | Attr.extFlags
+        // Not ATTR_CMNEXT_EXT_FLAGS: like CLONE_REFCNT and PRIVATESIZE, it sends APFS down
+        // a slow per-file path (one 83k-file folder listed in 8 s with it, 0.23 s without).
+        // `sharesBlocks` fetches it only for the few files that need it.
+        request.forkattr = Attr.extCloneID
 
         let parentPath = item.path == "/" ? "" : item.path
         var children: [FileNode] = []
@@ -238,6 +241,7 @@ public final class ScanJob: @unchecked Sendable {
                 let name = reader.readString()
                 let device = returned.commonattr & Attr.cmnDevID != 0 ? reader.read(Int32.self) : 0
                 let objectType = returned.commonattr & Attr.cmnObjType != 0 ? reader.read(UInt32.self) : 0
+                let fileID = returned.commonattr & Attr.cmnFileID != 0 ? reader.read(UInt64.self) : 0
 
                 if objectType == Attr.typeDirectory {
                     let mountStatus = returned.dirattr & Attr.dirMountStatus != 0 ? reader.read(UInt32.self) : 0
@@ -252,9 +256,8 @@ public final class ScanJob: @unchecked Sendable {
                     let linkCount = returned.fileattr & Attr.fileLinkCount != 0 ? reader.read(UInt32.self) : 1
                     var allocated = returned.fileattr & Attr.fileAllocSize != 0 ? reader.read(Int64.self) : 0
                     let cloneID = returned.forkattr & Attr.extCloneID != 0 ? reader.read(UInt64.self) : 0
-                    let flags = returned.forkattr & Attr.extFlags != 0 ? reader.read(UInt64.self) : 0
-                    let mayShareData = linkCount > 1 || flags & Attr.mayShareBlocks != 0
-                    if mayShareData && cloneID != 0 && !claimDataStream(device: device, cloneID: cloneID) {
+                    if allocated > 0 && cloneID != 0
+                        && !countsDataStream(device: device, cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: fd, name: name) {
                         allocated = 0
                     }
                     guard allocated > 0 else { continue }
@@ -273,12 +276,47 @@ public final class ScanJob: @unchecked Sendable {
         let cloneID: UInt64
     }
 
+    /// Whether this file's blocks should be added to the total.
+    ///
+    /// Each data stream (device, clone ID) counts once. The first file to claim it is
+    /// counted, whatever its kind; a later file under a taken key is skipped only if it
+    /// really shares blocks. Most files never get here twice, so the slow EXT_FLAGS lookup
+    /// runs only on collisions, and only for files whose clone ID differs from their file ID.
+    private func countsDataStream(device: Int32, cloneID: UInt64, fileID: UInt64, linkCount: UInt32,
+                                  at directory: Int32, name: String) -> Bool {
+        if claimDataStream(device: device, cloneID: cloneID) { return true }
+        return !sharesData(cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: directory, name: name)
+    }
+
+    /// Whether a file's blocks may also belong to another file, so it must be counted once.
+    ///
+    /// Hard links share their file. APFS gives a file that was never cloned, and a clone's
+    /// original, a clone ID equal to its file ID; claiming those is harmless, because no
+    /// unrelated file has that ID. A file whose clone ID differs is a clone copy, or a file
+    /// whose clone ID only numbers it inside an asset store (AssetsV2 files with clone IDs
+    /// like 26 that hold different data). Only those need EXT_FLAGS, fetched one file at a time.
+    private func sharesData(cloneID: UInt64, fileID: UInt64, linkCount: UInt32, at directory: Int32, name: String) -> Bool {
+        if linkCount > 1 || cloneID == fileID { return true }
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.commonattr = Attr.cmnReturnedAttrs
+        request.forkattr = Attr.extFlags
+        var reply = (length: UInt32(0), returned: attribute_set_t(), flags: UInt64(0))
+        let status = withUnsafeMutableBytes(of: &reply) { bytes in
+            getattrlistat(directory, name, &request, bytes.baseAddress, bytes.count,
+                          UInt(FSOPT_NOFOLLOW | FSOPT_ATTR_CMN_EXTENDED))
+        }
+        guard status == 0, reply.returned.forkattr & Attr.extFlags != 0 else { return true }
+        return reply.flags & Attr.mayShareBlocks != 0
+    }
+
     /// True the first time a data stream shared by hard links or APFS clones is seen, so
     /// its blocks count once. Without this, Preboot's cloned cryptexes triple its size.
+    /// Most files pass through here, so the set is split into shards with their own locks.
     private func claimDataStream(device: Int32, cloneID: UInt64) -> Bool {
-        sharedDataLock.lock()
-        defer { sharedDataLock.unlock() }
-        return seenDataStreams.insert(DataStreamKey(device: device, cloneID: cloneID)).inserted
+        let key = DataStreamKey(device: device, cloneID: cloneID)
+        let shard = dataStreamShards[Int(truncatingIfNeeded: (cloneID &* 0x9E37_79B9_7F4A_7C15) >> 58)]
+        return shard.withLock { $0.insert(key).inserted }
     }
 }
 
@@ -309,12 +347,15 @@ private enum Attr {
     static let cmnDevID: UInt32 = 0x0000_0002
     static let cmnError: UInt32 = 0x2000_0000
     static let cmnReturnedAttrs: UInt32 = 0x8000_0000
-    static let common = cmnReturnedAttrs | cmnName | cmnError | cmnDevID | cmnObjType
+    /// ATTR_CMN_FILEID packs after OBJTYPE (bit 3) and before the dir/file groups.
+    static let cmnFileID: UInt32 = 0x0200_0000
+    static let common = cmnReturnedAttrs | cmnName | cmnError | cmnDevID | cmnObjType | cmnFileID
     static let dirMountStatus: UInt32 = 0x0000_0004
     static let fileLinkCount: UInt32 = 0x0000_0001
     static let fileAllocSize: UInt32 = 0x0000_0004
     static let extCloneID: UInt32 = 0x0000_0100
     static let extFlags: UInt32 = 0x0000_0200
+    /// EF_MAY_SHARE_BLOCKS from sys/attr.h.
     static let mayShareBlocks: UInt64 = 0x0000_0001
     static let mountPoint: UInt32 = 0x0000_0001
     static let mountTrigger: UInt32 = 0x0000_0002

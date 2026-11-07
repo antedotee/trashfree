@@ -29,6 +29,14 @@ for run in 1...runs {
     options.workerCount = threads
     let job = ScanJob(url: URL(fileURLWithPath: path), options: options)
     guard let result = job.run() else { exit(1) }
+    if let dump = ProcessInfo.processInfo.environment["TF_DUMP"] {
+        var lines: [String] = []
+        func walk(_ node: FileNode, _ path: String) {
+            if node.isDirectory { node.children.forEach { walk($0, path + "/" + $0.name) } } else { lines.append("\(path)\t\(node.size)") }
+        }
+        walk(result.root, path)
+        try? (lines.sorted().joined(separator: "\n") + "\n").write(toFile: dump, atomically: true, encoding: .utf8)
+    }
 
     if tsv {
         let threadLabel = threads.map(String.init) ?? "default"

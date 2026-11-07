@@ -114,6 +114,26 @@ struct ScannerTests {
         #expect(node(result.root, "locked") == nil)
     }
 
+    @Test("a clone whose original is outside the scan keeps its bytes; edited clones count fully")
+    func clonesWithoutOriginal() throws {
+        let fixture = try Fixture()
+        // Scanning only clones/ sees both members of the clone pair: they still count once.
+        let pair = try #require(ScanJob(url: fixture.root.appendingPathComponent("clones")).run())
+        #expect(pair.root.size == fixture.allocated("clones/source"))
+
+        // A clone fully rewritten no longer shares blocks, so both files count.
+        let edited = fixture.root.appendingPathComponent("edited")
+        try FileManager.default.createDirectory(at: edited, withIntermediateDirectories: true)
+        let original = edited.appendingPathComponent("a").path
+        let copy = edited.appendingPathComponent("b").path
+        try Data(repeating: 1, count: 200_000).write(to: URL(fileURLWithPath: original))
+        #expect(clonefile(original, copy, 0) == 0)
+        try Data(repeating: 2, count: 200_000).write(to: URL(fileURLWithPath: copy), options: [])
+        let both = try #require(ScanJob(url: edited).run())
+        #expect(both.root.size == fixture.allocated("edited/a") + fixture.allocated("edited/b"))
+        #expect(both.root.children.count == 2)
+    }
+
     @Test("sizes are summed bottom-up and sorted largest first")
     func aggregation() throws {
         let fixture = try Fixture()
