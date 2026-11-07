@@ -19,7 +19,7 @@ while (( $# )); do
   esac
 done
 (( $# )) || { print -u2 "usage: $0 [-n runs] [-t threads] [-o out.tsv] [--no-warmup] target..."; exit 2; }
-[[ -n $out ]] || { mkdir -p "$root/analysis/bench"; out="$root/analysis/bench/$(date +%Y%m%d-%H%M%S)-trashfree.tsv"; }
+[[ -n $out ]] || { mkdir -p "$root/build/bench"; out="$root/build/bench/$(date +%Y%m%d-%H%M%S)-trashfree.tsv"; }
 
 swift build -c release --product tfscan --package-path "$root" >&2
 tfscan="$(swift build -c release --show-bin-path --package-path "$root")/tfscan"

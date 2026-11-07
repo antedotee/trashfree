@@ -49,7 +49,13 @@ To scan from the command line and compare against `du` or DaisyDisk:
 swift build -c release --product tfscan
 .build/release/tfscan ~/Downloads
 .build/release/tfscan / --startup     # startup-disk rules: system volumes in, firmlinked Data out
+.build/release/tfscan ~ --threads 4 --runs 3 --tsv   # timing rows: target, run, threads, seconds, items, bytes
+TF_DUMP=files.txt .build/release/tfscan ~             # also write every counted file and its size
+scripts/bench-scan.sh -n 5 / ~        # repeated runs with medians
 ```
+Run the tests with `scripts/test.sh` (plain `swift test` works when Xcode is installed).
+Without Full Disk Access, scans skip protected folders such as Mail and parts of
+`~/Library`, so run timing comparisons from a terminal that has it.
 
 ## Brand and website
 
@@ -63,7 +69,7 @@ swift build -c release --product tfscan
 ### TrashFreeCore
 
 - `Volume` lists browsable volumes (the APFS system volumes under /System/Volumes are skipped) with container capacity, free and purgeable space, and kind (startup disk, disk image, external, network).
-- `ScanJob` walks a folder in parallel with `getattrlistbulk(2)`, counting allocated bytes, counting hard links and APFS clones once, and never crossing into other mounted disks. It reports progress as bytes found against the volume's used space.
+- `ScanJob` walks a folder in parallel with `getattrlistbulk(2)`, counting allocated bytes, counting hard links and APFS clones once, and never crossing into other mounted disks. It reports progress as bytes found against the volume's used space. It runs one thread per core, or 4 on a spinning disk (`StorageMedium` reads the drive type from IOKit). It requests only cheap attributes: asking APFS for `ATTR_CMNEXT_EXT_FLAGS` on every file made listings up to 30× slower, so that flag is fetched for single files only, when two files report the same clone ID.
 - `FileNode` is one file or folder in the scan tree. Nodes are kept small because a startup-disk scan holds millions of them.
 
 ### TrashFreeUI
