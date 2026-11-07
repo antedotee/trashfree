@@ -24,15 +24,19 @@ public final class ScanJob: @unchecked Sendable {
         public var enteredMountPoints: (String) -> Bool
         /// Directories never listed.
         public var excludedPaths: Set<String>
+        /// Threads listing directories at once. nil picks the default.
+        public var workerCount: Int?
 
         public init(
             expectedBytes: Int64? = nil,
             enteredMountPoints: @escaping (String) -> Bool = { _ in false },
-            excludedPaths: Set<String> = []
+            excludedPaths: Set<String> = [],
+            workerCount: Int? = nil
         ) {
             self.expectedBytes = expectedBytes
             self.enteredMountPoints = enteredMountPoints
             self.excludedPaths = excludedPaths
+            self.workerCount = workerCount
         }
 
         /// Rules for the startup disk. The APFS volumes under /System/Volumes (VM, Preboot,
@@ -133,7 +137,8 @@ public final class ScanJob: @unchecked Sendable {
         let started = Date()
         stack = [WorkItem(node: root, path: rootURL.path, weight: 1)]
         let group = DispatchGroup()
-        for _ in 1..<max(2, ProcessInfo.processInfo.activeProcessorCount) {
+        let workers = max(1, options.workerCount ?? ProcessInfo.processInfo.activeProcessorCount)
+        for _ in 0..<(workers - 1) {
             group.enter()
             let worker = Thread { [self] in
                 work()
