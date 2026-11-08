@@ -43,6 +43,7 @@
       <ul class="nav__links">
         <li><a href="#features">Features</a></li>
         <li><a href="#how">How it works</a></li>
+        <li><a href="#speed">Speed</a></li>
         <li><a href="#privacy">Privacy</a></li>
         <li><a href="#install">Install</a></li>
         <li><a href="#faq">FAQ</a></li>
@@ -147,6 +148,72 @@
         </figure>
       </section>
     </div>
+
+    <section class="speed" id="speed" aria-labelledby="speed-title">
+      <div class="speed__head">
+        <p class="eyebrow">Speed</p>
+        <h2 id="speed-title" class="display display--md">Faster than DaisyDisk. <em>Much faster</em> the second time.</h2>
+        <p class="lede">We timed TrashFree, DaisyDisk and Mole on the same Mac, five runs each, with every app's caches deleted before every run. Shorter bars are faster.</p>
+      </div>
+
+      <div class="speed__grid">
+        <figure class="speed__card speed__card--fjord">
+          <figcaption>
+            <h3>Reopen your disk</h3>
+            <p>TrashFree saves each scan and, when you open the app again, rereads only the folders macOS says changed.</p>
+          </figcaption>
+          <dl class="bars" style="--max: 26.7">
+            <div class="bar bar--us" style="--v: 5.0"><dt>TrashFree</dt><dd>5.0 s</dd></div>
+            <div class="bar" style="--v: 26.7"><dt>DaisyDisk</dt><dd>26.7 s</dd></div>
+          </dl>
+          <p class="speed__note">Startup disk, 186 GB in 3.3 million files. TrashFree is timed from launch until the disk is ready to view. DaisyDisk keeps no scan between launches, so its time is a full rescan, not counting its own launch.</p>
+        </figure>
+
+        <figure class="speed__card speed__card--sea">
+          <figcaption>
+            <h3>Scan the whole startup disk</h3>
+            <p>A first scan, with nothing saved.</p>
+          </figcaption>
+          <dl class="bars" style="--max: 26.7">
+            <div class="bar bar--us" style="--v: 20.2"><dt>TrashFree</dt><dd>20.2 s</dd></div>
+            <div class="bar" style="--v: 26.7"><dt>DaisyDisk</dt><dd>26.7 s</dd></div>
+          </dl>
+          <p class="speed__note">Mole's analyzer has no whole-disk scan to compare.</p>
+        </figure>
+
+        <figure class="speed__card speed__card--birch">
+          <figcaption>
+            <h3>Scan your home folder</h3>
+            <p>2.35 million files, 109 GB.</p>
+          </figcaption>
+          <dl class="bars" style="--max: 21.1">
+            <div class="bar bar--us" style="--v: 14.3"><dt>TrashFree</dt><dd>14.3 s</dd></div>
+            <div class="bar" style="--v: 21.1"><dt>DaisyDisk</dt><dd>21.1 s</dd></div>
+            <div class="bar bar--stalled" style="--v: 21.1"><dt>Mole</dt><dd>Stopped after 5 min</dd></div>
+          </dl>
+          <p class="speed__note">Mole stopped making progress in all five runs, on a project folder synced with iCloud Drive.</p>
+        </figure>
+
+        <figure class="speed__card speed__card--clay">
+          <figcaption>
+            <h3>Scan ~/Library</h3>
+            <p>1 million files, 69 GB, including iCloud's staging area.</p>
+          </figcaption>
+          <dl class="bars" style="--max: 18">
+            <div class="bar bar--us" style="--v: 8.4"><dt>TrashFree</dt><dd>8.4 s</dd></div>
+            <div class="bar" style="--v: 13.6"><dt>DaisyDisk</dt><dd>13.6 s</dd></div>
+            <div class="bar" style="--v: 18.0"><dt>Mole</dt><dd>18.0 s<span>, 424k of 1M files</span></dd></div>
+          </dl>
+          <p class="speed__note">Mole marked every run of this folder as a partial scan and counted 424 thousand files.</p>
+        </figure>
+      </div>
+
+      <details class="speed__method">
+        <summary>How we measured</summary>
+        <p>MacBook Air (M2, 8 GB), macOS 26.5.1, internal SSD, on battery. TrashFree built from the current source, DaisyDisk 4.34.2, Mole 1.69.0. Every app had Full Disk Access. Before each run we deleted Mole's analyzer cache and DaisyDisk's and TrashFree's caches. macOS's own file cache was warm for all three. We ran the apps in turn, rotating the order each round, and show the median of five runs (six for the startup disk). Reopening is timed in the app itself by reading its window with the accessibility API. TrashFree and Mole are timed from start to exit. DaisyDisk is timed until its last folder listing, which leaves out the few seconds it then spends drawing, so its real times are a little longer. All three reported the same disk totals to within 0.1 GB, except where noted for Mole.</p>
+        <p>The one place DaisyDisk is ahead: on <code>/System/Library</code>, 146 thousand small folders, it took 2.7 s and TrashFree 3.2 s.</p>
+      </details>
+    </section>
 
     <section class="modes" aria-labelledby="modes-title">
       <div class="modes__head">
