@@ -215,8 +215,8 @@ public final class AppModel: ObservableObject {
 
     /// Snapshots are written here, one at a time. Moving items to the Trash edits the tree,
     /// so it waits for a write in progress first.
-    static let snapshotQueue = DispatchQueue(label: "dev.kartikyadav.trashfree.snapshots", qos: .utility)
-    static let log = Logger(subsystem: "dev.kartikyadav.trashfree", category: "scans")
+    nonisolated static let snapshotQueue = DispatchQueue(label: "dev.kartikyadav.trashfree.snapshots", qos: .utility)
+    nonisolated static let log = Logger(subsystem: "dev.kartikyadav.trashfree", category: "scans")
 
     /// At launch, brings each disk's saved scan up to date in the background, so the map
     /// is ready a second or two after the window opens instead of after a full scan.
