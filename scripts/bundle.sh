@@ -28,7 +28,6 @@ app="$root/build/TrashFree.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/TrashFree"
-# The app icon is packed from brand/trashfree-app-icon.png by scripts/make-icon.sh.
 [[ -f "$root/Resources/AppIcon.icns" ]] && cp "$root/Resources/AppIcon.icns" "$app/Contents/Resources/"
 
 cat > "$app/Contents/Info.plist" <<'PLIST'

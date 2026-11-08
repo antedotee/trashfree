@@ -13,3 +13,22 @@ build/
 analysis/
 PLAN.md
 .signing*/
+# Local only: logo sources, page design notes, and capture tools.
+brand/
+site/SPEC.md
+site/art/make_hero.py
+site/shots/disks.webp
+scripts/cap.sh
+scripts/capw.sh
+scripts/hover-check.sh
+scripts/make-icon.sh
+scripts/open-map.sh
+scripts/record.sh
+scripts/refs.sh
+scripts/render.mjs
+scripts/scale-css.py
+scripts/sheet.py
+scripts/shot.sh
+scripts/size-check.sh
+scripts/strip.py
+Tests/.gitkeep

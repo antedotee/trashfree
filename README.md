@@ -1,6 +1,6 @@
 # TrashFree
 
-<img src="brand/trashfree-app-icon.png" width="96" alt="TrashFree icon">
+<img src="site/brand/trashfree-app-icon.png" width="96" alt="TrashFree icon">
 
 An open-source macOS disk space analyzer inspired by [DaisyDisk](https://daisydiskapp.com/). Find what's filling your disk, drag it to the collector, and move it to the Trash in one click.
 
@@ -53,14 +53,10 @@ swift build -c release --product tfscan
 
 ## Brand and website
 
-- `brand/source/trashfree-logo.png` is the logo artwork: a player throwing a folder into
-  a trash can, in torn paper. `brand/make_logo.py` cuts the full-bleed app icon out of it,
-  plus the rounded website logo (favicon, nav, footer, link-preview card) and the folder
-  mark the hero tosses, for `brand/` and `site/brand/`.
-  `scripts/make-icon.sh` packs the icon into `Resources/AppIcon.icns`.
+- `Resources/AppIcon.icns` is the app icon; `site/brand/` holds the same logo for the web.
 - `site/` is the landing page: plain HTML and CSS, self-hosted fonts (Instrument Serif,
-  Inter), and real captures of the app in `site/shots/`. `site/SPEC.md` holds the design
-  spec. Preview with `cd site && python3 -m http.server`.
+  Inter), and real captures of the app in `site/shots/`. Preview with
+  `cd site && python3 -m http.server`.
 
 ## Architecture
 
