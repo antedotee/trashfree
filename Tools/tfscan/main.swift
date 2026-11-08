@@ -30,7 +30,8 @@ if arguments.contains("--refresh") {
     let started = Date()
     guard let snapshot = ScanSnapshot.load(for: url) else { print("no snapshot"); exit(1) }
     let loaded = Date()
-    guard let changed = snapshot.changes() else { print("history unusable; full scan needed"); exit(3) }
+    let history = snapshot.changesOrReason()
+    guard let changed = history.changes else { print("history unusable (\(history.reason ?? "?")); full scan needed"); exit(3) }
     let queried = Date()
     let eventID = FSEventsGetCurrentEventId()
     var options: ScanJob.Options = startup ? .startupDisk(expectedBytes: nil) : .init()

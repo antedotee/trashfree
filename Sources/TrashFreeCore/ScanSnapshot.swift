@@ -50,7 +50,14 @@ public struct ScanSnapshot {
     /// history. nil means the history cannot be trusted and the caller must scan in full:
     /// a different volume, dropped or wrapped events, or a change to the root itself.
     public func changes() -> [String: RefreshDepth]? {
-        guard !volumeUUID.isEmpty, volumeUUID == Self.volumeUUID(for: result.rootURL) else { return nil }
+        changesOrReason().changes
+    }
+
+    /// The changed folders, or why the history cannot be used.
+    public func changesOrReason() -> (changes: [String: RefreshDepth]?, reason: String?) {
+        guard !volumeUUID.isEmpty, volumeUUID == Self.volumeUUID(for: result.rootURL) else {
+            return (nil, "volume UUID \(volumeUUID) is now \(Self.volumeUUID(for: result.rootURL))")
+        }
         let root = result.rootURL.path
         // FSEvents names folders by their real path: /private/var for /var, and
         // /System/Volumes/Data/... for folders the startup disk reaches through firmlinks.
@@ -66,19 +73,23 @@ public struct ScanSnapshot {
         }
         guard let stream = FSEventStreamCreate(kCFAllocatorDefault, callback, &context, [root] as CFArray,
                                                eventID, 0, FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes))
-        else { return nil }
+        else { return (nil, "could not create an FSEvents stream") }
         let queue = DispatchQueue(label: "dev.kartikyadav.trashfree.fsevents")
         FSEventStreamSetDispatchQueue(stream, queue)
         guard FSEventStreamStart(stream) else {
             FSEventStreamRelease(stream)
-            return nil
+            return (nil, "could not start an FSEvents stream")
         }
         // Replaying history takes milliseconds; the deadline only guards a stuck daemon.
         let finished = collector.done.wait(timeout: .now() + 10) == .success
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
-        return queue.sync { finished && !collector.mustRescanAll ? collector.changed : nil }
+        return queue.sync {
+            if !finished { return (nil, "history did not finish within 10 s") }
+            if collector.mustRescanAll { return (nil, collector.rejection) }
+            return (collector.changed, nil)
+        }
     }
 
     private final class ChangeCollector {
@@ -86,6 +97,7 @@ public struct ScanSnapshot {
         let aliases: [(real: String, spelled: String)]
         var changed: [String: RefreshDepth] = [:]
         var mustRescanAll = false
+        var rejection: String?
         let done = DispatchSemaphore(value: 0)
         private var finished = false
 
@@ -116,6 +128,7 @@ public struct ScanSnapshot {
                 | kFSEventStreamEventFlagMount | kFSEventStreamEventFlagUnmount
             if flags & lost != 0 || (flags & kFSEventStreamEventFlagMustScanSubDirs != 0 && trimmed == root) {
                 mustRescanAll = true
+                rejection = String(format: "flags 0x%x at %@", flags, path)
                 return
             }
             if flags & kFSEventStreamEventFlagMustScanSubDirs != 0 {

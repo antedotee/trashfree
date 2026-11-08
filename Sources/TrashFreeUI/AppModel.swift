@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CoreServices
+import os
 import TrashFreeCore
 import SwiftUI
 
@@ -215,6 +216,7 @@ public final class AppModel: ObservableObject {
     /// Snapshots are written here, one at a time. Moving items to the Trash edits the tree,
     /// so it waits for a write in progress first.
     static let snapshotQueue = DispatchQueue(label: "dev.kartikyadav.trashfree.snapshots", qos: .utility)
+    static let log = Logger(subsystem: "dev.kartikyadav.trashfree", category: "scans")
 
     /// At launch, brings each disk's saved scan up to date in the background, so the map
     /// is ready a second or two after the window opens instead of after a full scan.
@@ -229,7 +231,12 @@ public final class AppModel: ObservableObject {
 
     private func save(_ result: ScanResult, eventID: FSEventStreamEventId) {
         Self.snapshotQueue.async {
-            try? ScanSnapshot.save(result, eventID: eventID, volumeUUID: ScanSnapshot.volumeUUID(for: result.rootURL))
+            do {
+                try ScanSnapshot.save(result, eventID: eventID, volumeUUID: ScanSnapshot.volumeUUID(for: result.rootURL))
+            } catch {
+                // A missing snapshot only costs a full scan next launch.
+                Self.log.error("saving the scan of \(result.rootURL.path, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -253,9 +260,15 @@ public final class AppModel: ObservableObject {
         }
         sources[index].state = .restoring
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let refresh = ScanSnapshot.load(for: url).flatMap { snapshot in
-                snapshot.changes().map { ScanJob(refreshing: snapshot.result, changed: $0, options: options) }
+            let started = Date()
+            let snapshot = ScanSnapshot.load(for: url)
+            let loaded = Date()
+            let history = snapshot?.changesOrReason()
+            let changed = history?.changes
+            let refresh = snapshot.flatMap { snapshot in
+                changed.map { ScanJob(refreshing: snapshot.result, changed: $0, options: options) }
             }
+            Self.log.info("restore \(url.path, privacy: .public): load \(loaded.timeIntervalSince(started)) s, history \(Date().timeIntervalSince(loaded)) s, \(changed?.count ?? -1) folders \(history?.reason ?? "", privacy: .public)")
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self, let index = self.sources.firstIndex(where: { $0.id == sourceID }),
@@ -273,7 +286,9 @@ public final class AppModel: ObservableObject {
         // Taken before the walk, so changes made while it runs are replayed next time.
         let eventID = FSEventsGetCurrentEventId()
         sources[index].state = .scanning(job, progress: 0)
+        let started = Date()
         job.start { [weak self] result in
+            Self.log.info("\(job.isRefresh ? "refresh" : "scan") finished in \(Date().timeIntervalSince(started)) s")
             MainActor.assumeIsolated { self?.finish(sourceID: sourceID, job: job, result: result, eventID: eventID) }
         }
         startProgressTimer()
