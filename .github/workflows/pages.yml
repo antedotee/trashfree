@@ -24,6 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Pages lets browsers cache files for 10 minutes, so a new page could load with the
+      # old stylesheet. Naming it by its content makes every change a new URL.
+      - name: Stamp the stylesheet URL with its hash
+        run: |
+          hash=$(sha256sum site/styles.css | cut -c1-12)
+          sed -i "s|href=\"styles.css\"|href=\"styles.css?v=$hash\"|" site/index.html
+          grep -q "styles.css?v=$hash" site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
