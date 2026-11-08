@@ -92,7 +92,7 @@ struct SourceRow: View {
     private var stateKey: Int {
         switch source.state {
         case .idle: return 0
-        case .scanning: return 1
+        case .scanning, .restoring: return 1
         case .scanned: return 2
         }
     }
@@ -115,18 +115,23 @@ struct SourceRow: View {
     @ViewBuilder
     private var usage: some View {
         switch source.state {
-        case .scanning(_, let progress):
+        case .restoring, .scanning:
+            let progress: Double = { if case .scanning(_, let value) = source.state { return value }; return 0 }()
+            let updating: Bool = {
+                if case .scanning(let job, _) = source.state { return job.isRefresh }
+                return true
+            }()
             lines(bar: ScanProgressBar(progress: progress)) {
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.mini)
-                    Text("Scanning…")
+                    Text(updating ? "Updating…" : "Scanning…")
                         .font(Theme.Font.rowDetail)
                         .foregroundColor(Theme.secondaryText)
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Scanning")
+            .accessibilityLabel(updating ? "Updating" : "Scanning")
             .accessibilityValue(Text("\(Int(progress * 100)) percent"))
         default:
             if let volume = source.volume {
@@ -168,7 +173,7 @@ struct SourceRow: View {
     private var menuEntries: [MenuEntry] {
         var entries: [MenuEntry] = []
         if source.result != nil {
-            entries += [.item("Rescan") { model.scan(source.id) }, .item("Forget Scan Result") { model.forgetScan(source.id) }, .separator]
+            entries += [.item("Rescan") { model.rescan(source.id) }, .item("Forget Scan Result") { model.forgetScan(source.id) }, .separator]
         } else if source.volume == nil {
             entries += [.item("Remove") { model.forgetScan(source.id) }, .separator]
         }

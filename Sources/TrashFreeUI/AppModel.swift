@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreServices
 import TrashFreeCore
 import SwiftUI
 
@@ -12,6 +13,8 @@ struct Source: Identifiable {
 
     enum ScanState {
         case idle
+        /// Reading the saved scan and asking FSEvents what changed since.
+        case restoring
         case scanning(ScanJob, progress: Double)
         case scanned(ScanResult)
     }
@@ -40,8 +43,10 @@ struct Source: Identifiable {
     }
 
     var isScanning: Bool {
-        if case .scanning = state { return true }
-        return false
+        switch state {
+        case .scanning, .restoring: return true
+        case .idle, .scanned: return false
+        }
     }
 
     var result: ScanResult? {
@@ -78,6 +83,8 @@ public final class AppModel: ObservableObject {
     @Published private(set) var hasFullDiskAccess = FullDiskAccess.isGranted
 
     private var progressTimer: Timer?
+    /// Disks whose saved scan the app is refreshing on its own at launch.
+    private var restoredAtLaunch: Set<String> = []
     private var accessTimer: Timer?
     private var volumeObservers: [NSObjectProtocol] = []
 
@@ -104,6 +111,7 @@ public final class AppModel: ObservableObject {
             MainActor.assumeIsolated { self?.checkAccess() }
         })
         resumePendingScan()
+        restoreSavedScans()
     }
 
     /// Rebuilds the volume rows, keeping scan state for volumes that are still mounted.
@@ -202,11 +210,76 @@ public final class AppModel: ObservableObject {
         scan(id)
     }
 
+    // MARK: Saved scans
+
+    /// Snapshots are written here, one at a time. Moving items to the Trash edits the tree,
+    /// so it waits for a write in progress first.
+    static let snapshotQueue = DispatchQueue(label: "dev.kartikyadav.trashfree.snapshots", qos: .utility)
+
+    /// At launch, brings each disk's saved scan up to date in the background, so the map
+    /// is ready a second or two after the window opens instead of after a full scan.
+    private func restoreSavedScans() {
+        guard FullDiskAccess.isGranted || UserDefaults.standard.bool(forKey: Defaults.declined) else { return }
+        for source in sources where source.volume != nil
+            && FileManager.default.fileExists(atPath: ScanSnapshot.file(for: source.url).path) {
+            restoredAtLaunch.insert(source.id)
+            startScan(source.id, reusingSnapshot: true)
+        }
+    }
+
+    private func save(_ result: ScanResult, eventID: FSEventStreamEventId) {
+        Self.snapshotQueue.async {
+            try? ScanSnapshot.save(result, eventID: eventID, volumeUUID: ScanSnapshot.volumeUUID(for: result.rootURL))
+        }
+    }
+
     // MARK: Scanning
 
-    private func startScan(_ sourceID: String) {
+    /// A full walk. "Scan" on a row reuses the saved scan when there is one; "Rescan"
+    /// always walks the whole disk again.
+    func rescan(_ sourceID: String) {
+        guard let source = sources.first(where: { $0.id == sourceID }) else { return }
+        ScanSnapshot.remove(for: source.url)
+        scan(sourceID)
+    }
+
+    private func startScan(_ sourceID: String, reusingSnapshot: Bool = true) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }), !sources[index].isScanning else { return }
-        let source = sources[index]
+        let options = scanOptions(for: sources[index])
+        let url = sources[index].url
+        guard reusingSnapshot else {
+            run(ScanJob(url: url, options: options), for: sourceID)
+            return
+        }
+        sources[index].state = .restoring
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let refresh = ScanSnapshot.load(for: url).flatMap { snapshot in
+                snapshot.changes().map { ScanJob(refreshing: snapshot.result, changed: $0, options: options) }
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, let index = self.sources.firstIndex(where: { $0.id == sourceID }),
+                          case .restoring = self.sources[index].state else { return }
+                    // No usable snapshot: the history was lost, the disk changed, or none was saved.
+                    self.sources[index].state = .idle
+                    self.run(refresh ?? ScanJob(url: url, options: options), for: sourceID)
+                }
+            }
+        }
+    }
+
+    private func run(_ job: ScanJob, for sourceID: String) {
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        // Taken before the walk, so changes made while it runs are replayed next time.
+        let eventID = FSEventsGetCurrentEventId()
+        sources[index].state = .scanning(job, progress: 0)
+        job.start { [weak self] result in
+            MainActor.assumeIsolated { self?.finish(sourceID: sourceID, job: job, result: result, eventID: eventID) }
+        }
+        startProgressTimer()
+    }
+
+    private func scanOptions(for source: Source) -> ScanJob.Options {
         var options: ScanJob.Options
         if let volume = source.volume {
             options = volume.kind == .startup
@@ -216,23 +289,22 @@ public final class AppModel: ObservableObject {
             options = .init()
         }
         options.workerCount = StorageMedium.of(volumeAt: source.url).scanWorkerCount
-        let job = ScanJob(url: source.url, options: options)
-        sources[index].state = .scanning(job, progress: 0)
-        job.start { [weak self] result in
-            MainActor.assumeIsolated { self?.finish(sourceID: sourceID, job: job, result: result) }
-        }
-        startProgressTimer()
+        return options
     }
 
     func cancelScan(_ sourceID: String) {
-        guard let index = sources.firstIndex(where: { $0.id == sourceID }),
-              case .scanning(let job, _) = sources[index].state else { return }
-        job.cancel()
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        switch sources[index].state {
+        case .scanning(let job, _): job.cancel()
+        case .restoring: break
+        case .idle, .scanned: return
+        }
         sources[index].state = .idle
     }
 
     func forgetScan(_ sourceID: String) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        ScanSnapshot.remove(for: sources[index].url)
         if sources[index].volume == nil {
             sources.remove(at: index)
         } else {
@@ -264,15 +336,19 @@ public final class AppModel: ObservableObject {
         scan(id)
     }
 
-    private func finish(sourceID: String, job: ScanJob, result: ScanResult?) {
+    private func finish(sourceID: String, job: ScanJob, result: ScanResult?, eventID: FSEventStreamEventId) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }),
               case .scanning(let current, _) = sources[index].state, current === job else { return }
         guard let result else {
             sources[index].state = .idle
+            restoredAtLaunch.remove(sourceID)
             return
         }
         sources[index].state = .scanned(result)
-        view(sourceID)
+        save(result, eventID: eventID)
+        // A refresh the app started at launch stays on the disk list; one the user asked
+        // for opens the map, like a scan.
+        if !job.isRefresh || restoredAtLaunch.remove(sourceID) == nil { view(sourceID) }
     }
 
     private func startProgressTimer() {
@@ -532,6 +608,8 @@ final class MapSession: ObservableObject {
 
     /// Moves every collected item to the Trash and removes it from the map.
     func deleteCollected() {
+        // The tree is about to change; let a snapshot write that reads it finish first.
+        AppModel.snapshotQueue.sync {}
         var failures: [String] = []
         for node in collected {
             do {
