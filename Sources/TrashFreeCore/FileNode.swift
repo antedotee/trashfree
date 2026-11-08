@@ -13,6 +13,17 @@ public final class FileNode: Identifiable {
     /// Midpoint of this node along the scan root's byte range, in 0...1. Drives its hue,
     /// so colors stay put while the user zooms around.
     public internal(set) var hue: Float = 0
+    /// The file system's ID for this item. A refresh keeps a subfolder's scanned contents
+    /// only if the folder it finds under that name has the same ID: iCloud replaces whole
+    /// folders by renaming new ones over them, and FSEvents then reports only the parent.
+    var fileID: UInt64 = 0
+    /// The data stream a counted file owns (APFS clone ID and device), so a later refresh
+    /// knows which streams are already counted outside the folders it relists. 0 when the
+    /// file system reports none.
+    var cloneID: UInt64 = 0
+    var device: Int32 = 0
+    /// The file is the stream's original rather than a clone of another file.
+    var ownsStream: Bool { cloneID != 0 && cloneID == fileID }
 
     public var id: ObjectIdentifier { ObjectIdentifier(self) }
 
@@ -83,6 +94,17 @@ public final class FileNode: Identifiable {
         children.sort { $0.size > $1.size }
         size = total
         return total
+    }
+
+    /// Files and folders in this subtree, itself included.
+    var nodeCount: Int {
+        var count = 0
+        var stack: [FileNode] = [self]
+        while let node = stack.popLast() {
+            count += 1
+            stack.append(contentsOf: node.children)
+        }
+        return count
     }
 
     func assignHues(offset: Double, total: Double) {

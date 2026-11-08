@@ -3,11 +3,57 @@ import Foundation
 import os
 
 /// A finished scan: the tree plus the location it was rooted at.
-public struct ScanResult {
+///
+/// The tree is handed from the scanning threads to the app, and from the app to the
+/// snapshot writer; each hand-off waits for the previous owner to finish writing it.
+public struct ScanResult: @unchecked Sendable {
     public let root: FileNode
     public let rootURL: URL
     public let duration: TimeInterval
     public let itemCount: Int
+    /// Data streams more than one file pointed at, and which file's bytes were counted.
+    /// A refresh starts from these, so relisting one folder never counts a clone or hard
+    /// link whose twin elsewhere already carries the bytes.
+    let sharedStreams: [DataStreamKey: DataStreamClaim]
+
+    init(root: FileNode, rootURL: URL, duration: TimeInterval, itemCount: Int,
+         sharedStreams: [DataStreamKey: DataStreamClaim] = [:]) {
+        self.root = root
+        self.rootURL = rootURL
+        self.duration = duration
+        self.itemCount = itemCount
+        self.sharedStreams = sharedStreams
+    }
+}
+
+struct DataStreamKey: Hashable {
+    let device: Int32
+    let cloneID: UInt64
+}
+
+struct DataStreamClaim {
+    /// The file whose bytes were counted, or nil while a refresh relists the folder it
+    /// was in: the first twin listed then takes over.
+    var holder: FileNode?
+    var heldByOriginal: Bool
+    /// Twins listed with no bytes, kept so a refresh can promote one if the holder goes.
+    var skipped: [SkippedTwin] = []
+    var collided: Bool { !skipped.isEmpty }
+}
+
+struct SkippedTwin {
+    let parent: FileNode
+    let name: String
+    let size: Int64
+    let fileID: UInt64
+}
+
+/// How much of a folder a refresh relists.
+public enum RefreshDepth {
+    /// The folder's own entries; subfolders that still exist keep their scanned contents.
+    case entries
+    /// The folder and everything under it.
+    case subtree
 }
 
 /// A parallel directory walk built on `getattrlistbulk(2)`.
@@ -17,12 +63,12 @@ public struct ScanResult {
 /// Each worker is the only writer of the directory it lists, so the tree itself needs no
 /// lock; the lock guards only the stack and the progress counters.
 public final class ScanJob: @unchecked Sendable {
-    public struct Options {
+    public struct Options: Sendable {
         /// Bytes the scan is expected to find, e.g. a volume's used space. When set,
         /// progress follows bytes found; otherwise it follows the share of the tree walked.
         public var expectedBytes: Int64?
         /// Mount points the walk may cross. Every other mount point is a different disk.
-        public var enteredMountPoints: (String) -> Bool
+        public var enteredMountPoints: @Sendable (String) -> Bool
         /// Directories never listed.
         public var excludedPaths: Set<String>
         /// Threads listing directories at once. nil picks the default.
@@ -30,7 +76,7 @@ public final class ScanJob: @unchecked Sendable {
 
         public init(
             expectedBytes: Int64? = nil,
-            enteredMountPoints: @escaping (String) -> Bool = { _ in false },
+            enteredMountPoints: @escaping @Sendable (String) -> Bool = { _ in false },
             excludedPaths: Set<String> = [],
             workerCount: Int? = nil
         ) {
@@ -61,6 +107,8 @@ public final class ScanJob: @unchecked Sendable {
         let path: String
         /// Share of the whole walk this directory's subtree represents.
         let weight: Double
+        /// Reuse the subfolders the node already has instead of listing them again.
+        var keepsSubfolders = false
     }
 
     public let rootURL: URL
@@ -73,12 +121,100 @@ public final class ScanJob: @unchecked Sendable {
     private var bytesFound: Int64 = 0
     private var itemsFound = 0
     private var isCancelled = false
-    private let dataStreamShards = (0..<64).map { _ in OSAllocatedUnfairLock(initialState: [DataStreamKey: Bool]()) }
+    private let dataStreamShards = (0..<64).map { _ in OSAllocatedUnfairLock(initialState: [DataStreamKey: DataStreamClaim]()) }
+    private let initialItems: [WorkItem]
+    /// Folders a refresh found gone; claims inside them are released at the end.
+    private let removedFolders = OSAllocatedUnfairLock(initialState: [FileNode]())
+    /// True for a job that updates an earlier scan instead of walking from scratch.
+    public let isRefresh: Bool
 
     public init(url: URL, options: Options = Options()) {
         self.rootURL = url
         self.options = options
         self.root = FileNode(name: url.path == "/" ? "/" : url.lastPathComponent, isDirectory: true, parent: nil)
+        self.initialItems = [WorkItem(node: root, path: url.path, weight: 1)]
+        self.isRefresh = false
+    }
+
+    /// Updates an earlier scan in place by relisting only `changed` folders (absolute
+    /// paths, as FSEvents reports them). A folder missing from the tree refreshes its
+    /// nearest scanned ancestor, which then finds it as new. The earlier tree must not be
+    /// read by anything else until the job finishes.
+    public init(refreshing previous: ScanResult, changed: [String: RefreshDepth], options: Options = Options()) {
+        self.rootURL = previous.rootURL
+        self.options = options
+        self.root = previous.root
+        self.isRefresh = true
+
+        let rootPath = previous.rootURL.path
+        let base = rootPath == "/" ? "" : rootPath
+        var targets: [ObjectIdentifier: (node: FileNode, path: String, depth: RefreshDepth)] = [:]
+        for (rawPath, depth) in changed {
+            let path = rawPath.hasSuffix("/") && rawPath.count > 1 ? String(rawPath.dropLast()) : rawPath
+            guard path == rootPath || path.hasPrefix(base + "/") else { continue }
+            var node = previous.root
+            var nodePath = rootPath
+            var depth = depth
+            for name in path.dropFirst(base.count).split(separator: "/") {
+                guard let child = node.children.first(where: { $0.isDirectory && $0.name == name }) else {
+                    // Not in the tree: new, or a folder the scan left out. Its parent's
+                    // listing decides which.
+                    depth = .entries
+                    break
+                }
+                node = child
+                nodePath = base + nodePath.dropFirst(base.count) + "/" + name
+            }
+            let key = ObjectIdentifier(node)
+            if targets[key]?.depth != .subtree { targets[key] = (node, nodePath, depth) }
+        }
+        // A subtree refresh already covers every folder below it.
+        let subtrees = targets.values.filter { $0.depth == .subtree }.map(\.node)
+        let kept = targets.values.filter { target in
+            !subtrees.contains { $0 !== target.node && target.node.isDescendant(of: $0) }
+        }
+        let weight = 1 / Double(max(kept.count, 1))
+        self.initialItems = kept.map { WorkItem(node: $0.node, path: $0.path, weight: weight, keepsSubfolders: $0.depth == .entries) }
+
+        // Files in relisted folders are listed again, so they leave the claims; a claim
+        // whose counted file was among them is released for the first twin listed.
+        let relistedFolders = Set(kept.filter { $0.depth == .entries }.map { ObjectIdentifier($0.node) })
+        let relistedTrees = kept.filter { $0.depth == .subtree }.map(\.node)
+        let isRelisted = { (folder: FileNode) in
+            relistedFolders.contains(ObjectIdentifier(folder))
+                || relistedTrees.contains { folder === $0 || folder.isDescendant(of: $0) }
+        }
+        // Every stream counted outside the relisted folders stays claimed, so a file listed
+        // again (or newly cloned) there is not counted a second time. Built per shard
+        // without locking, then handed over.
+        var seeds = [[DataStreamKey: DataStreamClaim]](repeating: [:], count: dataStreamShards.count)
+        var walk: [FileNode] = [previous.root]
+        while let folder = walk.popLast() {
+            let relisted = isRelisted(folder)
+            for child in folder.children {
+                if child.isDirectory {
+                    walk.append(child)
+                } else if !relisted && child.cloneID != 0 {
+                    let key = DataStreamKey(device: child.device, cloneID: child.cloneID)
+                    seeds[Self.shard(for: key.cloneID)][key] = DataStreamClaim(holder: child, heldByOriginal: child.ownsStream)
+                }
+            }
+        }
+        for (key, claim) in previous.sharedStreams {
+            var carried = seeds[Self.shard(for: key.cloneID)][key] ?? DataStreamClaim(holder: nil, heldByOriginal: false)
+            carried.skipped = claim.skipped.filter { !isRelisted($0.parent) }
+            // Promoted or not, a stream with twins outside the relisted folders stays known.
+            if carried.holder == nil && carried.skipped.isEmpty { continue }
+            seeds[Self.shard(for: key.cloneID)][key] = carried
+        }
+        for (index, shard) in seeds.enumerated() {
+            let seeded = shard
+            dataStreamShards[index].withLock { $0 = seeded }
+        }
+    }
+
+    private static func shard(for cloneID: UInt64) -> Int {
+        Int(truncatingIfNeeded: (cloneID &* 0x9E37_79B9_7F4A_7C15) >> 58)
     }
 
     /// 0...1, for a progress bar. Never reaches 1 before the scan finishes.
@@ -135,7 +271,7 @@ public final class ScanJob: @unchecked Sendable {
         // instead and the folder's bytes surface as hidden space.
         setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)
         let started = Date()
-        stack = [WorkItem(node: root, path: rootURL.path, weight: 1)]
+        stack = initialItems
         let group = DispatchGroup()
         let workers = max(1, options.workerCount ?? ProcessInfo.processInfo.activeProcessorCount)
         for _ in 0..<(workers - 1) {
@@ -156,9 +292,41 @@ public final class ScanJob: @unchecked Sendable {
         condition.unlock()
         guard !cancelled else { return nil }
 
+        let removed = Set(removedFolders.withLock { $0 }.map(ObjectIdentifier.init))
+        let isGone = { (node: FileNode) -> Bool in
+            guard !removed.isEmpty else { return false }
+            var current: FileNode? = node
+            while let folder = current {
+                if removed.contains(ObjectIdentifier(folder)) { return true }
+                current = folder.parent
+            }
+            return false
+        }
+        var shared: [DataStreamKey: DataStreamClaim] = [:]
+        for shard in dataStreamShards {
+            let collided = shard.withLock { claims in claims.filter { $0.value.collided || $0.value.holder == nil } }
+            for (key, claim) in collided {
+                var kept = claim
+                kept.skipped.removeAll { isGone($0.parent) }
+                if let holder = kept.holder, isGone(holder) { kept.holder = nil }
+                if kept.holder == nil {
+                    // The counted file is gone; a twin in a folder the refresh kept takes over.
+                    guard !kept.skipped.isEmpty else { continue }
+                    let twin = kept.skipped.removeFirst()
+                    let node = FileNode(name: twin.name, isDirectory: false, size: twin.size, parent: twin.parent)
+                    node.fileID = twin.fileID
+                    node.cloneID = key.cloneID
+                    node.device = key.device
+                    twin.parent.children.append(node)
+                    kept.holder = node
+                }
+                if kept.collided { shared[key] = kept }
+            }
+        }
         root.aggregate()
         root.assignHues(offset: 0, total: Double(root.size))
-        return ScanResult(root: root, rootURL: rootURL, duration: Date().timeIntervalSince(started), itemCount: items)
+        return ScanResult(root: root, rootURL: rootURL, duration: Date().timeIntervalSince(started),
+                          itemCount: isRefresh ? root.nodeCount : items, sharedStreams: shared)
     }
 
     // MARK: Worker
@@ -194,6 +362,7 @@ public final class ScanJob: @unchecked Sendable {
             for (node, path) in listing.subdirectories {
                 stack.append(WorkItem(node: node, path: path, weight: share))
             }
+            completedWeight += listing.keptWeight * share
             if subdirectoryCount > 0 || (stack.isEmpty && busyWorkers == 0) {
                 condition.broadcast()
             }
@@ -204,6 +373,8 @@ public final class ScanJob: @unchecked Sendable {
         var subdirectories: [(FileNode, String)] = []
         var bytes: Int64 = 0
         var itemCount = 0
+        /// Subfolders reused from the earlier scan, which need no listing.
+        var keptWeight = 0.0
     }
 
     private func list(_ item: WorkItem, buffer: UnsafeMutableRawPointer, bufferSize: Int) -> Listing {
@@ -224,6 +395,10 @@ public final class ScanJob: @unchecked Sendable {
 
         let parentPath = item.path == "/" ? "" : item.path
         var children: [FileNode] = []
+        var previousSubfolders: [String: FileNode] = [:]
+        if item.keepsSubfolders {
+            for child in item.node.children where child.isDirectory { previousSubfolders[child.name] = child }
+        }
 
         while true {
             let count = getattrlistbulk(fd, &request, buffer, bufferSize, UInt64(FSOPT_ATTR_CMN_EXTENDED))
@@ -249,31 +424,41 @@ public final class ScanJob: @unchecked Sendable {
                     if mountStatus & Attr.mountTrigger != 0 { continue }
                     if mountStatus & Attr.mountPoint != 0 && !options.enteredMountPoints(path) { continue }
                     if options.excludedPaths.contains(path) { continue }
-                    let node = FileNode(name: name, isDirectory: true, parent: item.node)
-                    children.append(node)
-                    listing.subdirectories.append((node, path))
+                    if let kept = previousSubfolders[name], kept.fileID == fileID {
+                        children.append(kept)
+                        listing.keptWeight += 1
+                    } else {
+                        let node = FileNode(name: name, isDirectory: true, parent: item.node)
+                        node.fileID = fileID
+                        children.append(node)
+                        listing.subdirectories.append((node, path))
+                    }
                 } else {
                     let linkCount = returned.fileattr & Attr.fileLinkCount != 0 ? reader.read(UInt32.self) : 1
-                    var allocated = returned.fileattr & Attr.fileAllocSize != 0 ? reader.read(Int64.self) : 0
+                    let allocated = returned.fileattr & Attr.fileAllocSize != 0 ? reader.read(Int64.self) : 0
                     let cloneID = returned.forkattr & Attr.extCloneID != 0 ? reader.read(UInt64.self) : 0
-                    if allocated > 0 && cloneID != 0
-                        && !countsDataStream(device: device, cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: fd, name: name) {
-                        allocated = 0
-                    }
                     guard allocated > 0 else { continue }
-                    children.append(FileNode(name: name, isDirectory: false, size: allocated, parent: item.node))
+                    let node = FileNode(name: name, isDirectory: false, size: allocated, parent: item.node)
+                    node.fileID = fileID
+                    node.cloneID = cloneID
+                    node.device = device
+                    if cloneID != 0 && !countsDataStream(device: device, cloneID: cloneID, fileID: fileID, linkCount: linkCount,
+                                                         node: node, at: fd) {
+                        continue
+                    }
+                    children.append(node)
                     listing.bytes += allocated
                 }
                 listing.itemCount += 1
             }
         }
+        if item.keepsSubfolders {
+            let listed = Set(children.lazy.filter(\.isDirectory).map(ObjectIdentifier.init))
+            let gone = previousSubfolders.values.filter { !listed.contains(ObjectIdentifier($0)) }
+            if !gone.isEmpty { removedFolders.withLock { $0.append(contentsOf: gone) } }
+        }
         item.node.children = children
         return listing
-    }
-
-    private struct DataStreamKey: Hashable {
-        let device: Int32
-        let cloneID: UInt64
     }
 
     /// Whether this file's blocks should be added to the total.
@@ -283,17 +468,24 @@ public final class ScanJob: @unchecked Sendable {
     /// really shares blocks. Most files never get here twice, so the slow EXT_FLAGS lookup
     /// runs only on collisions, and only for files whose clone ID differs from their file ID.
     private func countsDataStream(device: Int32, cloneID: UInt64, fileID: UInt64, linkCount: UInt32,
-                                  at directory: Int32, name: String) -> Bool {
-        switch claimDataStream(device: device, cloneID: cloneID, isOriginal: cloneID == fileID) {
+                                  node: FileNode, at directory: Int32) -> Bool {
+        let key = DataStreamKey(device: device, cloneID: cloneID)
+        let skip = { [self] in
+            let twin = SkippedTwin(parent: node.parent!, name: node.name, size: node.size, fileID: node.fileID)
+            dataStreamShards[Self.shard(for: cloneID)].withLock { $0[key]?.skipped.append(twin) }
+            return false
+        }
+        switch claimDataStream(key, fileID: fileID, node: node) {
         case .claimed:
             return true
         case .takenByOriginal where linkCount > 1 || cloneID != fileID:
             // A file whose clone ID names another file that was already counted: its clone.
             // iCloud Drive keeps such a clone of every synced file in CloudDocs, so this is
             // the common collision, and skipping the lookup here saves one slow call each.
-            return false
+            return skip()
         case .takenByOriginal, .takenByCopy:
-            return !sharesData(cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: directory, name: name)
+            return sharesData(cloneID: cloneID, fileID: fileID, linkCount: linkCount, at: directory, name: node.name)
+                ? skip() : true
         }
     }
 
@@ -326,15 +518,23 @@ public final class ScanJob: @unchecked Sendable {
 
     /// Claims a data stream. An original is a file whose clone ID is its own file ID; once
     /// an original holds a key, the key is marked so, even if a copy claimed it first.
-    private func claimDataStream(device: Int32, cloneID: UInt64, isOriginal: Bool) -> Claim {
-        let key = DataStreamKey(device: device, cloneID: cloneID)
-        let shard = dataStreamShards[Int(truncatingIfNeeded: (cloneID &* 0x9E37_79B9_7F4A_7C15) >> 58)]
-        return shard.withLock { claims in
-            guard let heldByOriginal = claims[key] else {
-                claims[key] = isOriginal
+    private func claimDataStream(_ key: DataStreamKey, fileID: UInt64, node: FileNode) -> Claim {
+        let isOriginal = key.cloneID == fileID
+        return dataStreamShards[Self.shard(for: key.cloneID)].withLock { claims in
+            guard var claim = claims[key] else {
+                claims[key] = DataStreamClaim(holder: node, heldByOriginal: isOriginal)
                 return .claimed
             }
-            if isOriginal && !heldByOriginal { claims[key] = true }
+            if claim.holder == nil {
+                // Released by a refresh: the earlier holder was in a folder being relisted.
+                claim.holder = node
+                claim.heldByOriginal = isOriginal
+                claims[key] = claim
+                return .claimed
+            }
+            let heldByOriginal = claim.heldByOriginal
+            if isOriginal { claim.heldByOriginal = true }
+            claims[key] = claim
             return heldByOriginal ? .takenByOriginal : .takenByCopy
         }
     }
